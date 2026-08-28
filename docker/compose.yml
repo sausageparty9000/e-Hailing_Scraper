@@ -1,0 +1,26 @@
+name: farelah
+
+services:
+  backend:
+    build:
+      context: ../backend
+    environment:
+      PORT: "8080"
+      WEB_ORIGIN: http://localhost:3000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:80"
+    restart: unless-stopped
+
