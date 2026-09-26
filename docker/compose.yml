@@ -1,6 +1,12 @@
 name: farelah
 
 services:
+  backend-test:
+    profiles: ["test"]
+    build:
+      context: ../backend
+      target: test
+
   backend:
     build:
       context: ../backend
@@ -23,4 +29,3 @@ services:
     ports:
       - "${APP_PORT:-3000}:80"
     restart: unless-stopped
-
