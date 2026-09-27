@@ -1,6 +1,21 @@
 name: farelah
 
 services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: farelah
+      POSTGRES_USER: farelah
+      POSTGRES_PASSWORD: farelah
+    volumes:
+      - farelah_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farelah -d farelah"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   backend-test:
     profiles: ["test"]
     build:
@@ -13,6 +28,10 @@ services:
     environment:
       PORT: "8080"
       WEB_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgres://farelah:farelah@database:5432/farelah
+    depends_on:
+      database:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 5s
@@ -29,3 +48,6 @@ services:
     ports:
       - "${APP_PORT:-3000}:80"
     restart: unless-stopped
+
+volumes:
+  farelah_data:

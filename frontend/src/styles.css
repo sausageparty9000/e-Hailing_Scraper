@@ -13,10 +13,10 @@ nav { height: 84px; max-width: 1160px; margin: auto; padding: 0 32px; display: f
 h1 { max-width: 760px; margin: 0; font: 800 clamp(42px, 7vw, 82px)/.98 'Manrope'; letter-spacing: -4px; }
 h1 em { font-style: normal; }
 .intro { color: #68736d; font-size: 18px; margin: 28px 0 40px; }
-form { position: relative; max-width: 1020px; padding: 12px; display: grid; grid-template-columns: 1fr 28px 1fr 180px; gap: 8px; align-items: center; background: #fff; border: 1px solid #dedfd9; border-radius: 18px; box-shadow: 0 18px 45px #27372c12; }
+.route-form { position: relative; max-width: 1020px; padding: 12px; display: grid; grid-template-columns: 1fr 28px 1fr 180px; gap: 8px; align-items: center; background: #fff; border: 1px solid #dedfd9; border-radius: 18px; box-shadow: 0 18px 45px #27372c12; }
 label { padding: 8px 14px; }
 label span { display: block; color: #8a938e; text-transform: uppercase; letter-spacing: 1.2px; font-size: 10px; font-weight: 700; }
-input { width: 100%; border: 0; outline: 0; padding: 8px 0 2px; color: #17211d; font: 600 15px 'DM Sans'; background: transparent; }
+input, select { width: 100%; border: 0; outline: 0; padding: 8px 0 2px; color: #17211d; font: 600 15px 'DM Sans'; background: transparent; }
 .route-line { display: flex; align-items: center; gap: 4px; }
 .route-line:before { content: ''; width: 100%; height: 1px; background: #cbd1cc; }
 .route-line i { width: 5px; height: 5px; background: #159947; border-radius: 50%; }
@@ -25,6 +25,7 @@ button:hover { background: #159947; transform: translateY(-1px); }
 button:disabled { opacity: .65; cursor: wait; }
 button b { margin-left: 10px; }
 .error { color: #a53c31; font-size: 13px; }
+.success { color: #127d3b; font-size: 13px; }
 .results { background: #17211d; color: white; padding: 72px max(32px, calc((100vw - 1096px)/2)) 42px; }
 .results header { display: flex; justify-content: space-between; align-items: end; margin-bottom: 28px; }
 .results h2 { margin: 0; font: 700 34px 'Manrope'; letter-spacing: -1.5px; }
@@ -41,9 +42,18 @@ article p, .time span { margin: 0; color: #849088; font-size: 12px; }
 .price { text-align: right; font: 700 27px 'Manrope'; }
 .price small { color: #849088; font-size: 10px; margin-right: 5px; }
 .notice { color: #6e7a73; font-size: 11px; margin: 22px 0 0; }
+.empty { padding: 30px; border: 1px dashed #526157; border-radius: 14px; color: #a9b5ad; }
+.contribute { display: grid; grid-template-columns: 1fr 1.5fr; gap: 40px; margin-top: 70px; padding-top: 45px; border-top: 1px solid #334039; }
+.contribute > div > p:last-child { color: #9daa9e; line-height: 1.6; max-width: 310px; }
+.quote-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.quote-form label { background: #fff; border-radius: 10px; min-width: 0; }
+.quote-form button { grid-column: 2; }
 @media (max-width: 750px) {
   .hero { padding-top: 38px; } h1 { letter-spacing: -2.5px; }
-  form { grid-template-columns: 1fr; } .route-line { display: none; } button { margin-top: 4px; }
+  .route-form { grid-template-columns: 1fr; } .route-line { display: none; } button { margin-top: 4px; }
   article { grid-template-columns: 1fr auto; gap: 12px; } .rank { grid-column: 1/-1; } .time { display: none; }
   .results header > span { display: none; }
+  .contribute { grid-template-columns: 1fr; gap: 20px; }
+  .quote-form { grid-template-columns: 1fr; }
+  .quote-form button { grid-column: 1; }
 }

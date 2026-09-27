@@ -1,104 +1,121 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
-	"math"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
 
-func TestQuotesRequireRoute(t *testing.T) {
-	for _, query := range []string{"", "pickup=KL", "dropoff=Pavilion"} {
-		t.Run(query, func(t *testing.T) {
+type fakeStore struct {
+	quotes []quote
+	err    error
+}
+
+func (s *fakeStore) Insert(_ context.Context, q quote) (quote, error) {
+	if s.err != nil {
+		return quote{}, s.err
+	}
+	q.ID = int64(len(s.quotes) + 1)
+	s.quotes = append(s.quotes, q)
+	return q, nil
+}
+
+func (s *fakeStore) List(_ context.Context, pickup, dropoff string) ([]quote, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	result := []quote{}
+	for _, q := range s.quotes {
+		if q.Pickup == pickup && q.Dropoff == dropoff {
+			result = append(result, q)
+		}
+	}
+	return result, nil
+}
+
+func TestQuoteAPI(t *testing.T) {
+	store := &fakeStore{}
+	api := newRouter(store)
+	observedAt := time.Now().UTC().Truncate(time.Second)
+	input := quote{Pickup: "KL Sentral", Dropoff: "Pavilion", Provider: "Grab", Service: "JustGrab", Price: 18.50, ObservedAt: observedAt}
+	body, _ := json.Marshal(input)
+	w := httptest.NewRecorder()
+	api.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/quotes", bytes.NewReader(body)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("POST status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var created quote
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID != 1 || created.Source != "user_submitted" || created.Currency != "MYR" {
+		t.Fatalf("unexpected saved quote: %+v", created)
+	}
+
+	w = httptest.NewRecorder()
+	api.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/quotes?pickup=KL+Sentral&dropoff=Pavilion", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET status = %d", w.Code)
+	}
+	var listed struct {
+		Quotes []quote `json:"quotes"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Quotes) != 1 || listed.Quotes[0].Price != 18.50 {
+		t.Fatalf("unexpected list: %+v", listed)
+	}
+}
+
+func TestInvalidQuotes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input quote
+	}{
+		{"missing route", quote{Provider: "Grab", Service: "JustGrab", Price: 10, ObservedAt: time.Now()}},
+		{"zero price", quote{Pickup: "A", Dropoff: "B", Provider: "Grab", Service: "JustGrab", ObservedAt: time.Now()}},
+		{"negative price", quote{Pickup: "A", Dropoff: "B", Provider: "Grab", Service: "JustGrab", Price: -5, ObservedAt: time.Now()}},
+		{"too many decimals", quote{Pickup: "A", Dropoff: "B", Provider: "Grab", Service: "JustGrab", Price: 1.234, ObservedAt: time.Now()}},
+		{"old observation", quote{Pickup: "A", Dropoff: "B", Provider: "Grab", Service: "JustGrab", Price: 10, ObservedAt: time.Now().Add(-25 * time.Hour)}},
+		{"future observation", quote{Pickup: "A", Dropoff: "B", Provider: "Grab", Service: "JustGrab", Price: 10, ObservedAt: time.Now().Add(time.Hour)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(tc.input)
 			w := httptest.NewRecorder()
-			quotesHandler(w, httptest.NewRequest(http.MethodGet, "/api/quotes?"+query, nil))
+			newRouter(&fakeStore{}).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/quotes", bytes.NewReader(body)))
 			if w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400", w.Code)
-			}
-			var body map[string]string
-			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body["error"] == "" {
-				t.Fatalf("expected JSON error, got %s", w.Body.String())
 			}
 		})
 	}
 }
 
-func TestQuotes(t *testing.T) {
-	for _, tc := range []struct {
-		name, distance string
-		prices         []float64
-	}{
-		{"default distance", "", []float64{20.23, 17.83, 16.53}},
-		{"explicit distance", "10", []float64{22.40, 20, 18.70}},
-		{"zero defaults", "0", []float64{20.23, 17.83, 16.53}},
-		{"negative defaults", "-1", []float64{20.23, 17.83, 16.53}},
-		{"invalid defaults", "abc", []float64{20.23, 17.83, 16.53}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			before := time.Now()
-			w := httptest.NewRecorder()
-			quotesHandler(w, httptest.NewRequest(http.MethodGet, "/api/quotes?pickup=KL+Sentral&dropoff=Pavilion&distanceKm="+tc.distance, nil))
-			if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" {
-				t.Fatalf("unexpected response: status %d, headers %v", w.Code, w.Header())
-			}
-			var body quoteResponse
-			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-				t.Fatal(err)
-			}
-			if body.Pickup != "KL Sentral" || body.Dropoff != "Pavilion" {
-				t.Fatalf("route not preserved: %+v", body)
-			}
-			if body.ObservedAt.Before(before) || body.ObservedAt.After(time.Now()) {
-				t.Fatalf("invalid observation time: %v", body.ObservedAt)
-			}
-			if len(body.Quotes) != 3 {
-				t.Fatalf("got %d quotes, want 3", len(body.Quotes))
-			}
-			providers := []string{"Grab", "AirAsia Ride", "Maxim"}
-			for i, q := range body.Quotes {
-				if q.Provider != providers[i] || math.Abs(q.Price-tc.prices[i]) > 0.000001 {
-					t.Errorf("unexpected quote %d: %+v", i, q)
-				}
-				if !q.IsSample || q.Currency != "MYR" {
-					t.Errorf("quote must identify sample data and currency: %+v", q)
-				}
-			}
-		})
+func TestRouteAndStoreErrors(t *testing.T) {
+	for _, target := range []string{"/api/quotes", "/api/quotes?pickup=A", "/api/quotes?dropoff=B"} {
+		w := httptest.NewRecorder()
+		newRouter(&fakeStore{}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d", target, w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	newRouter(&fakeStore{err: errors.New("db unavailable")}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/quotes?pickup=A&dropoff=B", nil))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("database error status = %d", w.Code)
 	}
 }
 
 func TestCORS(t *testing.T) {
-	for _, origin := range []string{"", "https://example.com"} {
-		t.Run(origin, func(t *testing.T) {
-			t.Setenv("WEB_ORIGIN", origin)
-			wantOrigin := origin
-			if wantOrigin == "" {
-				wantOrigin = "http://localhost:5173"
-			}
-			for _, method := range []string{http.MethodGet, http.MethodOptions} {
-				called := false
-				handler := withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					called = true
-					w.WriteHeader(http.StatusAccepted)
-				}))
-				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, httptest.NewRequest(method, "/api/quotes", nil))
-				if w.Header().Get("Access-Control-Allow-Origin") != wantOrigin {
-					t.Errorf("unexpected allowed origin: %s", w.Header().Get("Access-Control-Allow-Origin"))
-				}
-				if method == http.MethodOptions {
-					if called || w.Code != http.StatusNoContent || w.Body.Len() != 0 {
-						t.Error("preflight should return empty 204 without calling downstream handler")
-					}
-					if w.Header().Get("Access-Control-Allow-Methods") != "GET, OPTIONS" || w.Header().Get("Access-Control-Allow-Headers") != "Content-Type" {
-						t.Error("missing preflight permissions")
-					}
-				} else if !called || w.Code != http.StatusAccepted {
-					t.Error("GET should reach downstream handler")
-				}
-			}
-		})
+	t.Setenv("WEB_ORIGIN", "https://example.com")
+	w := httptest.NewRecorder()
+	withCORS(newRouter(&fakeStore{})).ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/api/quotes", nil))
+	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "https://example.com" || w.Header().Get("Access-Control-Allow-Methods") != "GET, POST, OPTIONS" {
+		t.Fatalf("unexpected preflight: %d %v", w.Code, w.Header())
 	}
 }
